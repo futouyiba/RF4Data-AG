@@ -1,0 +1,46 @@
+# ── Data & Runtime ──────────────────────────────────
+data/*.db
+data/*.db-wal
+data/*.db-shm
+data/evidence/
+data/logs/
+data/reports/
+data/reports_test/
+data/reports_p1_test/
+
+# ── Config (keep template, ignore user-specific) ──
+config/roi_config.json
+
+# ── Python ──────────────────────────────────────────
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+*.egg
+.eggs/
+dist/
+build/
+
+# ── IDE ─────────────────────────────────────────────
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.agent/
+
+# ── OS ──────────────────────────────────────────────
+Thumbs.db
+Desktop.ini
+.DS_Store
+
+# ── Virtual env ─────────────────────────────────────
+.venv/
+venv/
+env/
+
+# ── PRD source docs (not needed in public repo) ────
+PRDfromGPT.md
+PRDfromGemini.md

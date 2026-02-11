@@ -1,0 +1,15 @@
+{
+  "render_width": 1920,
+  "render_height": 1080,
+  "window_title": "Russian Fishing 4",
+  "db_path": "data/rf4_research.db",
+  "env_snapshot_interval_s": 60,
+  "wait_timeout_s": 1200,
+  "retrieve_timeout_s": 180,
+  "input_delay_multiplier": 1.0,
+  "ocr_lang": "eng+chi_sim",
+  "ocr_confidence_threshold": 0.6,
+  "save_evidence": true,
+  "evidence_dir": "data/evidence",
+  "report_dir": "data/reports"
+}

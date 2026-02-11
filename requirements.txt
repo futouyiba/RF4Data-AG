@@ -1,0 +1,26 @@
+# RF4 Bream Research Platform - Dependencies
+# Python 3.10+
+
+# Core
+opencv-python>=4.8.0
+numpy>=1.24.0
+
+# Input automation
+pyautogui>=0.9.54
+
+# Screenshot (fast)
+mss>=9.0.0
+
+# OCR
+pytesseract>=0.3.10
+Pillow>=10.0.0
+
+# Data & Analysis
+matplotlib>=3.7.0
+
+# LLM (optional - for AI log generation)
+openai>=1.0.0
+httpx>=0.25.0
+
+# Dev tools (optional)
+# pytest>=7.4.0
