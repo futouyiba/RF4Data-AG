@@ -44,3 +44,11 @@ env/
 # ── PRD source docs (not needed in public repo) ────
 PRDfromGPT.md
 PRDfromGemini.md
+
+# ── Logs & Test Results ──
+error.txt
+*_test_result.txt
+*.log
+
+# ── Local Test Samples ──
+data/samples/

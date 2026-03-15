@@ -44,6 +44,8 @@ RF4Data-AG/
 │       └── llm_client.py           # LLM 日志 (Mock + OpenAI)
 └── tools/                          # 独立工具
     ├── calibrate.py                # ROI 校准 GUI
+    ├── analyze_image.py            # 截图单步调试 (HSV Mask / OCR)
+    ├── batch_test_cv.py            # 离线批量 CV 回归测试
     └── report.py                   # CLI 报告生成
 ```
 
@@ -72,9 +74,22 @@ cp config/settings.template.json config/settings.json
 python tools/calibrate.py
 ```
 
-需要标定的区域：杆 1/2/3 指示器、聊天框、拉力条。
+需要标定的区域：杆 1/2/3 指示器、聊天框、拉力条、起鱼弹窗。
 
-### 4. 运行
+### 4. 离线调试与测试 (M6 新增)
+
+配置好 ROI 后，可以通过截取游戏画面离线调试计算机视觉参数，而无需一直开着游戏。
+
+```bash
+# 生成并显示指定 HSV 区间的 Color Mask 预览
+python tools/analyze_image.py screenshot.png --roi 100 100 50 50 --hsv --mask-hsv 170 100 100 180 255 255
+
+# 对收集到的样本图库进行批量回归测试，验证识别率
+python tools/batch_test_cv.py --type bite --dir data/samples/bites/ --rod 1
+python tools/batch_test_cv.py --type popup --dir data/samples/popups/
+```
+
+### 5. 运行自动化 Session
 
 ```bash
 python main.py --map "Old Burg" --spot "35:67" --notes "测试欧鳊底钓"
