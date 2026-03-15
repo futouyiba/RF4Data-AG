@@ -58,6 +58,11 @@ ROI_DEFINITIONS = [
         "label": "天气面板 (按M键后左上角信息区)",
         "color": "#00FFFF",
     },
+    {
+        "name": "catch_popup",
+        "label": "起鱼弹窗 (屏幕中央鱼获信息)",
+        "color": "#FF00FF",
+    },
 ]
 
 
