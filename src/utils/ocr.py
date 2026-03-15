@@ -16,6 +16,13 @@ logger = logging.getLogger(__name__)
 try:
     import pytesseract
     _HAS_TESSERACT = True
+    
+    # 尝试设置常见的 Windows Tesseract 路径，防止找不到
+    import os
+    _tess_path = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+    if os.path.exists(_tess_path):
+        pytesseract.pytesseract.tesseract_cmd = _tess_path
+        
 except ImportError:
     _HAS_TESSERACT = False
     logger.warning("pytesseract 未安装。建议: pip install pytesseract")
@@ -115,7 +122,50 @@ class OCREngine:
     _CATCH_PATTERNS = [
         re.compile(r"捕获了?\s*(.+?)\s+(\d+\.?\d*)\s*kg", re.IGNORECASE),
         re.compile(r"Caught\s+(.+?)\s+(\d+\.?\d*)\s*kg", re.IGNORECASE),
+        # 新格式: "Player: FishName, Weight g" (e.g. "futou: Roach, 500 g")
+        re.compile(r":\s*(.+?),\s*(\d+\.?\d*)\s*(kg|g)", re.IGNORECASE),
+        # 弹窗格式往往分行，或者直接是 "Roach" 下一行 "500 g"
     ]
+
+    def extract_catch_from_popup(self, text: str) -> Optional[dict]:
+        """
+        从弹窗 OCR 文本中提取渔获。
+        弹窗通常包含:
+            Fish Name (e.g. Common Roach)
+            Weight (e.g. 591 g)
+            Length (e.g. 29 cm)
+            [Keep] [Release]
+        """
+        # 1. 寻找重量 (e.g. "591 g" or "1.234 kg")
+        weight_match = re.search(r"(\d+\.?\d*)\s*(kg|g)", text, re.IGNORECASE)
+        if not weight_match:
+            return None
+        
+        weight_val = float(weight_match.group(1))
+        unit = weight_match.group(2).lower()
+        if unit == 'g':
+            weight_val /= 1000.0  # 统一转为 kg
+            
+        # 2. 寻找鱼名 (通常在第一行，或重量上方)
+        # 简单策略：取第一行非空文本，且不是重量/长度/按钮
+        lines = [line.strip() for line in text.split('\n') if line.strip()]
+        fish_name = "Unknown"
+        
+        for line in lines:
+            # 跳过包含数字的行 (往往是重量/长度)
+            if re.search(r"\d", line):
+                continue
+            # 跳过常见 UI 词
+            if line.lower() in ["keep", "release", "space", "backspace", "valuable"]:
+                continue
+            # 假设第一行符合条件的就是鱼名
+            fish_name = line
+            break
+            
+        return {
+            "fish_name": fish_name,
+            "weight_kg": weight_val,
+        }
 
     def extract_catch(self, text: str) -> Optional[dict]:
         """
@@ -127,9 +177,16 @@ class OCREngine:
         for pattern in self._CATCH_PATTERNS:
             match = pattern.search(text)
             if match:
+                weight = float(match.group(2))
+                # 如果有第三个分组且是单位 (kg/g)
+                if len(match.groups()) >= 3:
+                     unit = match.group(3).lower()
+                     if unit == 'g':
+                         weight /= 1000.0
+                
                 return {
                     "fish_name": match.group(1).strip(),
-                    "weight_kg": float(match.group(2)),
+                    "weight_kg": weight,
                 }
         return None
 

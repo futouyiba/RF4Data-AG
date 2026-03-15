@@ -219,35 +219,11 @@ class RodFSM:
             logger.debug("Rod%d: 拉力危险，放线", self.rod_slot)
 
         elif tension.value == TensionZone.GONE:
-            # 拉力条消失 — 可能起完鱼了或者鱼跑了
-            # 检查聊天框是否有渔获
-            catch_result = self.vision.detect_catch_from_chat(frame)
-            if catch_result.value:
-                self._pending_catch = catch_result
-                self._transition(RodState.LOGGING, "检测到渔获")
-                return
-
-            # 如果收线已经很久了而且拉力条消失，可能是鱼跑了
-            if self._retrieve_start and (time.time() - self._retrieve_start) > 5:
-                evidence_path = self.capture.save_evidence(
-                    frame, prefix=f"loss_rod{self.rod_slot}",
-                    session_id=self.session_id,
-                )
-                self.db.log_event(Event(
-                    session_id=self.session_id,
-                    rod_slot=self.rod_slot,
-                    event_type="LOSS",
-                    evidence_path=evidence_path,
-                    ts=datetime.now(),
-                ))
-                self.db.save_catch(Catch(
-                    session_id=self.session_id,
-                    rod_slot=self.rod_slot,
-                    outcome="LOSS",
-                    ts_land=datetime.now(),
-                ))
-                self._transition(RodState.IDLE, "鱼跑了/断线")
-                return
+            # 拉力条消失 — 可能起鱼、跑鱼或空钩
+            # 转入 LOGGING 状态统一等待结果（弹窗/聊天/超时）
+            self.driver.key_up("left")
+            self._transition(RodState.LOGGING, "拉力消失，进入结算")
+            return
 
         else:
             # 安全/警告区 — 继续收线
@@ -266,45 +242,73 @@ class RodFSM:
             self.driver.key_up("left")
             self._transition(RodState.IDLE, "收线超时")
 
-        # 同时检查聊天框（可能在收线过程中鱼已经上来了）
-        catch_result = self.vision.detect_catch_from_chat(frame)
-        if catch_result.value:
-            self.driver.key_up("left")
-            self._pending_catch = catch_result
-            self._transition(RodState.LOGGING, "检测到渔获")
+        # 注意：不再在 RETRIEVING 这里检测聊天框，统一放到 LOGGING里
 
     def _handle_logging(self, frame) -> None:
-        """LOGGING: 记录渔获数据 → IDLE。"""
-        catch_data = getattr(self, "_pending_catch", None)
+        """
+        LOGGING: 结算阶段。
+        等待起鱼弹窗 或 聊天框信息。
+        如果超时无结果，则视为空杆或未知跑鱼。
+        """
+        # 1. 优先尝试检测弹窗 (更准确)
+        popup = self.vision.detect_catch_popup(frame)
+        if popup.value:
+            self._log_catch_and_finish(frame, popup.value, popup.confidence, "POPUP")
+            # 弹窗需要按空格确认收鱼
+            logger.info("Rod%d: 检测到起鱼弹窗，按空格收鱼", self.rod_slot)
+            self.driver.random_delay(0.5, 1.0)
+            self.driver.press("space")
+            self.driver.random_delay(0.5, 1.0)
+            return
 
+        # 2. 其次尝试检测聊天框 (Backup)
+        # 只有在弹窗没出现时才依赖这个（比如弹窗被禁用了？）
+        chat = self.vision.detect_catch_from_chat(frame)
+        if chat.value:
+            self._log_catch_and_finish(frame, chat.value, chat.confidence, "CHAT")
+            return
+
+        # 3. 超时检查
+        # 进入 LOGGING 状态如果在 8 秒内还没识别到，就认为是空杆/跑鱼
+        if self.time_in_state > 8.0:
+            logger.info("Rod%d: 结算超时(8s)，未检测到渔获", self.rod_slot)
+            # 记录一个空retrieve或者loss? 
+            # 如果之前的 retrieve 时间很短 (<5s)，可能是才刚抛下去就提杆了 -> 视为 IDLE reset
+            # 如果 retrieve 时间长，可能是跑鱼了但没检测到 LOSS 信号
+            
+            # 这里简单处理：视为完成，不记录 Catch
+            self._pending_catch = None
+            self._retrieve_start = None
+            self._transition(RodState.IDLE, "结算结束(无渔获)")
+
+    def _log_catch_and_finish(self, frame, fish_info: dict, conf: float, source: str):
+        """记录渔获并结束 LOGGING 状态。"""
         evidence_path = self.capture.save_evidence(
-            frame, prefix=f"catch_rod{self.rod_slot}",
+            frame, prefix=f"catch_rod{self.rod_slot}_{source}",
             session_id=self.session_id,
         )
 
-        if catch_data and catch_data.value:
-            fish_info = catch_data.value
-            fight_time = (time.time() - self._retrieve_start) if self._retrieve_start else 0
+        fight_time = (time.time() - self._retrieve_start) if self._retrieve_start else 0
+        weight_g = fish_info.get("weight_kg", 0) * 1000
 
-            catch = Catch(
-                session_id=self.session_id,
-                rod_slot=self.rod_slot,
-                fish_name_raw=fish_info.get("fish_name", "Unknown"),
-                weight_g=fish_info.get("weight_kg", 0) * 1000,
-                outcome="CATCH",
-                fight_time_s=round(fight_time, 1),
-                evidence_path=evidence_path,
-                confidence=catch_data.confidence,
-                ts_land=datetime.now(),
-            )
-            catch_id = self.db.save_catch(catch)
-            logger.info(
-                "Rod%d: 🐟 %s %.2fkg (conf=%.0f%%) → catch #%d",
-                self.rod_slot, catch.fish_name_raw,
-                catch.weight_g / 1000, catch.confidence * 100, catch_id,
-            )
-        else:
-            logger.warning("Rod%d: LOGGING 但无渔获数据", self.rod_slot)
+        catch = Catch(
+            session_id=self.session_id,
+            rod_slot=self.rod_slot,
+            fish_name_raw=fish_info.get("fish_name", "Unknown"),
+            weight_g=weight_g,
+            outcome="CATCH",
+            fight_time_s=round(fight_time, 1),
+            evidence_path=evidence_path,
+            confidence=conf,
+            ts_land=datetime.now(),
+        )
+        catch_id = self.db.save_catch(catch)
+        
+        logger.info(
+            "Rod%d: 🐟 [%s] %s %.2fkg (conf=%.0f%%) → #%d",
+            self.rod_slot, source, catch.fish_name_raw,
+            catch.weight_g / 1000, catch.confidence * 100, catch_id,
+        )
 
         self._pending_catch = None
         self._retrieve_start = None

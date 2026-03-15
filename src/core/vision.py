@@ -271,6 +271,28 @@ class VisionSensor:
         catch = ocr.extract_catch(chat_result.value)
         return DetectionResult(catch, chat_result.confidence)
 
+    def detect_catch_popup(self, frame: np.ndarray) -> DetectionResult:
+        """
+        从起鱼弹窗中检测渔获信息（比聊天框更准确）。
+        需要配置 'catch_popup' ROI。
+
+        Returns:
+            DetectionResult(value=dict|None, confidence)
+        """
+        crop = self._crop_roi(frame, "catch_popup")
+        if crop is None:
+            return DetectionResult(None, 0.0)
+
+        # 弹窗通常是浅色背景，使用 light_bg 模式
+        ocr = self._get_ocr()
+        text, confidence = ocr.recognize(crop, preprocess_mode="light_bg")
+        
+        if not text:
+            return DetectionResult(None, 0.0)
+
+        catch = ocr.extract_catch_from_popup(text)
+        return DetectionResult(catch, confidence)
+
     # ── 环境信息 OCR ────────────────────────────────────
 
     def read_weather(self, frame: np.ndarray) -> DetectionResult:
